@@ -1,21 +1,163 @@
 import { GtkItem } from "./types";
 
-// Format date String from YYYY-MM-DD to Indonesian full-date text
+// Format date String from YYYY-MM-DD or M/D/YYYY or D/M/YYYY to Indonesian full-date text
 export function formatTanggalIndo(dateStr: string): string {
   if (!dateStr) return "";
-  const parts = dateStr.split("-");
+  const cleanStr = String(dateStr).trim();
+  if (!cleanStr) return "";
+
+  // Split by common delimiters: dash, slash, dot, or space
+  const parts = cleanStr.split(/[-\/\.\s]+/);
   if (parts.length === 3) {
-    const d = parseInt(parts[2], 10);
-    const m = parseInt(parts[1], 10) - 1;
-    const y = parseInt(parts[0], 10);
+    let d = NaN;
+    let m = NaN;
+    let y = NaN;
+
+    const p1 = parseInt(parts[0], 10);
+    const p2 = parseInt(parts[1], 10);
+    const p3 = parseInt(parts[2], 10);
+
+    // Case 1: p1 is the 4-digit year (YYYY-MM-DD or YYYY/MM/DD)
+    if (parts[0].length === 4 && !isNaN(p1)) {
+      y = p1;
+      m = p2 - 1;
+      d = p3;
+    }
+    // Case 2: p3 is the 4-digit year (DD/MM/YYYY or MM/DD/YYYY)
+    else if (parts[2].length === 4 && !isNaN(p3)) {
+      y = p3;
+      // If p1 is > 12, then p1 is surely the day, and p2 is the month (e.g. 22/06/2026)
+      if (p1 > 12) {
+        d = p1;
+        m = p2 - 1;
+      }
+      // If p2 is > 12, then p2 is surely the day, and p1 is the month (e.g. 06/22/2026)
+      else if (p2 > 12) {
+        d = p2;
+        m = p1 - 1;
+      }
+      // If both <= 12, default to day-first D/M/YYYY (Standard Indonesian / European format)
+      // e.g. 05/06/2026 is interpreted as 5 Juni 2026.
+      else {
+        d = p1;
+        m = p2 - 1;
+      }
+    }
+    // Case 3: 2-digit years (e.g. YY/MM/DD or DD/MM/YY)
+    else if (!isNaN(p1) && !isNaN(p2) && !isNaN(p3)) {
+      y = p3 < 100 ? 2000 + p3 : p3;
+      if (p1 > 12) {
+        d = p1;
+        m = p2 - 1;
+      } else if (p2 > 12) {
+        d = p2;
+        m = p1 - 1;
+      } else {
+        d = p1;
+        m = p2 - 1;
+      }
+    }
+
     const months = [
       "Januari", "Februari", "Maret", "April", "Mei", "Juni",
       "Juli", "Agustus", "September", "Oktober", "November", "Desember"
     ];
-    if (!isNaN(d) && m >= 0 && m < 12 && !isNaN(y)) {
+
+    if (!isNaN(d) && !isNaN(m) && m >= 0 && m < 12 && !isNaN(y)) {
       return `${d} ${months[m]} ${y}`;
     }
   }
+
+  // Fallback
+  try {
+    const parsedDate = new Date(cleanStr);
+    if (!isNaN(parsedDate.getTime()) && cleanStr.includes("-") && cleanStr.length > 8) {
+      const d = parsedDate.getDate();
+      const m = parsedDate.getMonth();
+      const y = parsedDate.getFullYear();
+      const months = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+      ];
+      return `${d} ${months[m]} ${y}`;
+    }
+  } catch (e) {
+    //
+  }
+
+  return dateStr;
+}
+
+// Normalize any date formats to YYYY-MM-DD for standard input[type="date"]
+export function normalizeDateToYmd(dateStr: string): string {
+  if (!dateStr) return "";
+  const cleanStr = String(dateStr).trim();
+  if (!cleanStr) return "";
+
+  const parts = cleanStr.split(/[-\/\.\s]+/);
+  if (parts.length === 3) {
+    let d = NaN;
+    let m = NaN;
+    let y = NaN;
+
+    const p1 = parseInt(parts[0], 10);
+    const p2 = parseInt(parts[1], 10);
+    const p3 = parseInt(parts[2], 10);
+
+    // Case 1: p1 is the 4-digit year (YYYY-MM-DD or YYYY/MM/DD)
+    if (parts[0].length === 4 && !isNaN(p1)) {
+      y = p1;
+      m = p2;
+      d = p3;
+    }
+    // Case 2: p3 is the 4-digit year (DD/MM/YYYY or MM/DD/YYYY)
+    else if (parts[2].length === 4 && !isNaN(p3)) {
+      y = p3;
+      if (p1 > 12) {
+        d = p1;
+        m = p2;
+      } else if (p2 > 12) {
+        d = p2;
+        m = p1;
+      } else {
+        d = p1;
+        m = p2;
+      }
+    }
+    // Case 3: 2-digit years
+    else if (!isNaN(p1) && !isNaN(p2) && !isNaN(p3)) {
+      y = p3 < 100 ? 2000 + p3 : p3;
+      if (p1 > 12) {
+        d = p1;
+        m = p2;
+      } else if (p2 > 12) {
+        d = p2;
+        m = p1;
+      } else {
+        d = p1;
+        m = p2;
+      }
+    }
+
+    if (!isNaN(d) && !isNaN(m) && m >= 1 && m <= 12 && !isNaN(y)) {
+      const pad = (num: number) => String(num).padStart(2, '0');
+      return `${y}-${pad(m)}-${pad(d)}`;
+    }
+  }
+
+  // Fallback
+  try {
+    const parsedDate = new Date(cleanStr);
+    if (!isNaN(parsedDate.getTime()) && cleanStr.includes("-") && cleanStr.length > 8) {
+      const year = parsedDate.getFullYear();
+      const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(parsedDate.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  } catch (e) {
+    //
+  }
+
   return dateStr;
 }
 

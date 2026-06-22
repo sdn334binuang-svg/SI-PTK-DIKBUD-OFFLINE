@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { GtkItem, School } from "../types";
 import { X, Loader2, Save } from "lucide-react";
+import { normalizeDateToYmd } from "../utils";
 
 interface ModalGtkProps {
   schools: School[];
@@ -75,8 +76,8 @@ export const ModalGtk: React.FC<ModalGtkProps> = ({
       setStatusPegawai(gtkToEdit.Status_Pegawai);
       setNip(gtkToEdit.NIP);
       setGolongan(gtkToEdit.Golongan);
-      setTmtGolongan(gtkToEdit.TMT_Golongan_Formatted);
-      setTmtKgbTerakhir(gtkToEdit.TMT_KGB_Terakhir_Formatted || "");
+      setTmtGolongan(normalizeDateToYmd(gtkToEdit.TMT_Golongan_Formatted));
+      setTmtKgbTerakhir(normalizeDateToYmd(gtkToEdit.TMT_KGB_Terakhir_Formatted || ""));
       setJabatan(gtkToEdit.Jabatan);
       setPendidikan(gtkToEdit.Pendidikan);
       setNoHp(gtkToEdit.No_HP ? String(gtkToEdit.No_HP).replace(/^62/, "0") : "");
@@ -104,7 +105,7 @@ export const ModalGtk: React.FC<ModalGtkProps> = ({
         setJenisMapelLainnya("");
       }
 
-      setTmtKepsek(gtkToEdit.TMT_Kepsek_Formatted || "");
+      setTmtKepsek(normalizeDateToYmd(gtkToEdit.TMT_Kepsek_Formatted || ""));
       setSertifikasi(gtkToEdit.Sertifikasi || "Belum");
 
       const predefinedMapels = [
