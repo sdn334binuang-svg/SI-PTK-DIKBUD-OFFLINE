@@ -4,6 +4,7 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { exec } from "child_process";
 import dotenv from "dotenv";
+import * as XLSX from "xlsx";
 
 dotenv.config();
 
@@ -254,7 +255,7 @@ app.post("/api/change-password", async (req, res) => {
   return res.json({ success: false, message: "Password lama tidak sesuai!" });
 });
 
-// Admin Dinas: Download CSV Template for GTK/PTK
+// Admin Dinas: Download Excel Template for GTK/PTK
 app.get("/api/admin/download-template", (req, res) => {
   const templateObjects = [
     {
@@ -297,95 +298,55 @@ app.get("/api/admin/download-template", (req, res) => {
     }
   ];
 
-  const csvContent = "\ufeffsep=,\n" + stringifyToCSV(templateObjects);
+  const worksheet = XLSX.utils.json_to_sheet(templateObjects);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Template PTK");
 
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", "attachment; filename=template_ptk_dikbud.csv");
-  return res.send(csvContent);
+  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", "attachment; filename=template_ptk_dikbud.xlsx");
+  return res.send(buffer);
 });
 
-// Admin Dinas: Upload and Sync CSV Database
+// Admin Dinas: Upload and Sync Excel / CSV Database
 app.post("/api/admin/upload-database", async (req, res) => {
-  const { csvText, mode } = req.body;
-  if (!csvText) {
-    return res.status(400).json({ success: false, message: "Konten teks CSV kosong!" });
+  const { excelBase64, mode } = req.body;
+  if (!excelBase64) {
+    return res.status(400).json({ success: false, message: "Konten berkas Excel kosong atau tidak terkirim!" });
   }
 
   try {
-    let rawText = csvText;
-    // Strip BOM prefix if present
-    if (rawText.charCodeAt(0) === 0xFEFF) {
-      rawText = rawText.slice(1);
-    }
+    const fileBuffer = Buffer.from(excelBase64, "base64");
+    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const parsedRows = XLSX.utils.sheet_to_json(worksheet) as any[];
 
-    // Skip sep=, line if template identifier is present
-    if (rawText.trim().toLowerCase().startsWith("sep=")) {
-      const firstNewlineIdx = rawText.indexOf("\n");
-      if (firstNewlineIdx !== -1) {
-        rawText = rawText.slice(firstNewlineIdx + 1);
-      }
-    }
-
-    // Split text securely recognizing quotes
-    const lines: string[] = [];
-    let currentLine = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < rawText.length; i++) {
-      const char = rawText[i];
-      if (char === '"') {
-        inQuotes = !inQuotes;
-        currentLine += char;
-      } else if (char === '\n' && !inQuotes) {
-        lines.push(currentLine);
-        currentLine = "";
-      } else if (char === '\r' && !inQuotes) {
-        // ignore carriage return
-      } else {
-        currentLine += char;
-      }
-    }
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-
-    if (lines.length < 2) {
-      return res.status(400).json({ success: false, message: "Berkas CSV tidak valid atau kosong!" });
-    }
-
-    const headers = parseCSVLine(lines[0]);
-    const parsedRows: any[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i].trim() === "") continue;
-      const rowValues = parseCSVLine(lines[i]);
-      const rowObj: any = {};
-      headers.forEach((header, idx) => {
-        rowObj[header] = rowValues[idx] !== undefined ? rowValues[idx] : "";
-      });
-      parsedRows.push(rowObj);
+    if (!parsedRows || parsedRows.length === 0) {
+      return res.status(400).json({ success: false, message: "Berkas Excel tidak memiliki data valid di baris pertama!" });
     }
 
     // Map into normalized format
     const cleanedRows = parsedRows.map((d: any) => {
-      const idVal = getVal(d, ["id"]) || ("ID" + Date.now() + Math.floor(Math.random() * 100000));
+      const idVal = getVal(d, ["id"]) || "ID" + Date.now() + Math.floor(Math.random() * 100000);
       return {
         id: idVal,
         kecamatan: getVal(d, ["kecamatan", "kec"]).toUpperCase().trim(),
-        sekolah: getVal(d, ["sekolah", "nama_sekolah", "nama sekolah"]).toUpperCase().trim(),
+        sekolah: getVal(d, ["sekolah", "nama_sekolah", "nama sekolah", "nama_satuan_pendidikan"]).toUpperCase().trim(),
         nama: getVal(d, ["nama", "nama_lengkap", "nama lengkap"]),
-        nip: getVal(d, ["nip"]),
-        status_pegawai: getVal(d, ["status_pegawai", "status", "statuspegawai"]),
-        nik: getVal(d, ["nik"]),
-        golongan: getVal(d, ["golongan", "gol"]),
-        tmt_golongan: getVal(d, ["tmt_golongan", "tmtgolongan"]),
+        nip: getVal(d, ["nip"]) ? String(getVal(d, ["nip"])).trim() : "",
+        status_pegawai: getVal(d, ["status_pegawai", "status", "statuspegawai", "status_kepegawaian"]),
+        nik: getVal(d, ["nik"]) ? String(getVal(d, ["nik"])).trim() : "",
+        golongan: getVal(d, ["golongan", "gol", "pangkat_golongan"]),
+        tmt_golongan: getVal(d, ["tmt_golongan", "tmtgolongan", "tmt_gol"]),
         jabatan: getVal(d, ["jabatan"]),
         pendidikan: getVal(d, ["pendidikan"]),
         beban_tugas: getVal(d, ["beban_tugas", "beban_tugas_pokok"]),
         tmt_kepsek: getVal(d, ["tmt_kepsek"]),
         sertifikasi: getVal(d, ["sertifikasi"]) || "Belum",
         mapel: getVal(d, ["mapel"]),
-        no_hp: getVal(d, ["no_hp", "nohp", "hp"]),
+        no_hp: getVal(d, ["no_hp", "nohp", "hp", "nomor_hp"]),
         tmt_kgb_terakhir: getVal(d, ["tmt_kgb_terakhir", "tmt_kgb", "tmt_kgb_terakhir_formatted"]),
         created_at: new Date().toISOString()
       };
@@ -396,7 +357,7 @@ app.post("/api/admin/upload-database", async (req, res) => {
     if (validRows.length === 0) {
       return res.status(400).json({ 
         success: false, 
-        message: "Tidak ditemukan baris data valid! Pastikan kolom Nama, NIK, Sekolah, dan Kecamatan terisi dengan benar." 
+        message: "Tidak ditemukan baris data valid! Pastikan tabel memiliki kolom 'nama', 'nik', 'sekolah', dan 'kecamatan' dengan baris data lengkap." 
       });
     }
 
@@ -413,14 +374,17 @@ app.post("/api/admin/upload-database", async (req, res) => {
 
       // Overlay with uploaded rows matching either ID or NIK key
       validRows.forEach((item: any) => {
-        // match on ID
-        if (item.id && rowMap.has(item.id.toLowerCase().trim())) {
-          rowMap.set(item.id.toLowerCase().trim(), item);
-        } else if (item.nik && rowMap.has(item.nik.toLowerCase().trim())) {
-          rowMap.set(item.nik.toLowerCase().trim(), item);
+        const cleanId = item.id ? String(item.id).toLowerCase().trim() : "";
+        const cleanNik = item.nik ? String(item.nik).toLowerCase().trim() : "";
+        
+        if (cleanId && rowMap.has(cleanId)) {
+          rowMap.set(cleanId, item);
+        } else if (cleanNik && rowMap.has(cleanNik)) {
+          rowMap.set(cleanNik, item);
         } else {
           // New row to map
-          rowMap.set(item.id.toLowerCase().trim(), item);
+          const uniqueKey = cleanId || cleanNik || ("ID" + Date.now() + Math.floor(Math.random() * 100000));
+          rowMap.set(uniqueKey, item);
         }
       });
 
@@ -433,12 +397,12 @@ app.post("/api/admin/upload-database", async (req, res) => {
     writeCSV(GTK_CSV_PATH, finalRows);
     return res.json({ 
       success: true, 
-      message: `Database berhasil diperbarui! Berhasil memproses ${validRows.length} data guru/tenaga kependidikan.` 
+      message: `Database berhasil diperbarui! Berhasil mengimpor & mengolah ${validRows.length} data guru/tenaga kependidikan.` 
     });
 
   } catch (err: any) {
-    console.error("Csv Import error:", err);
-    return res.status(500).json({ success: false, message: "Terjadi kesalahan: " + err.message });
+    console.error("Excel Import error:", err);
+    return res.status(500).json({ success: false, message: "Gagal memproses berkas Excel: " + err.message });
   }
 });
 

@@ -12,7 +12,7 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
   onClose,
   onUploadSuccess
 }) => {
-  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [excelFile, setExcelFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [uploadMode, setUploadMode] = useState<"merge" | "replace">("merge");
   const [loading, setLoading] = useState(false);
@@ -20,6 +20,14 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
+
+  const validateFile = (file: File): boolean => {
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext === "xlsx" || ext === "xls" || ext === "csv") {
+      return true;
+    }
+    return false;
+  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -38,11 +46,11 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.name.endsWith(".csv")) {
-        setCsvFile(file);
+      if (validateFile(file)) {
+        setExcelFile(file);
         setStatus(null);
       } else {
-        setStatus({ success: false, message: "Hanya dapat menerima berkas dengan format .csv!" });
+        setStatus({ success: false, message: "Hanya menerima berkas Excel (.xlsx, .xls) atau (.csv)!" });
       }
     }
   };
@@ -50,11 +58,11 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (file.name.endsWith(".csv")) {
-        setCsvFile(file);
+      if (validateFile(file)) {
+        setExcelFile(file);
         setStatus(null);
       } else {
-        setStatus({ success: false, message: "Hanya dapat menerima berkas dengan format .csv!" });
+        setStatus({ success: false, message: "Hanya menerima berkas Excel (.xlsx, .xls) atau (.csv)!" });
       }
     }
   };
@@ -69,17 +77,18 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!csvFile) {
-      return setStatus({ success: false, message: "Silakan pilih berkas CSV terlebih dahulu!" });
+    if (!excelFile) {
+      return setStatus({ success: false, message: "Silakan pilih berkas Excel terlebih dahulu!" });
     }
 
     setLoading(true);
     setStatus(null);
 
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = async () => {
       try {
-        const text = event.target?.result as string;
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(",")[1];
 
         const response = await fetch("/api/admin/upload-database", {
           method: "POST",
@@ -87,7 +96,7 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            csvText: text,
+            excelBase64: base64,
             mode: uploadMode
           })
         });
@@ -95,7 +104,7 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
         const data = await response.json();
         if (data.success) {
           setStatus({ success: true, message: data.message });
-          setCsvFile(null);
+          setExcelFile(null);
           onUploadSuccess();
         } else {
           setStatus({ success: false, message: data.message || "Gagal mengunggah database." });
@@ -112,7 +121,7 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
       setLoading(false);
     };
 
-    reader.readAsText(csvFile, "utf-8");
+    reader.readAsDataURL(excelFile);
   };
 
   return (
@@ -122,16 +131,17 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
         {/* Header */}
         <div className="p-5 border-b border-[#2d2420] flex items-center justify-between bg-gradient-to-r from-[#241a16] to-[#1c1715]">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-[#f25c05]/10 text-[#f25c05] rounded-xl border border-[#f25c05]/20">
+            <div className="p-2.5 bg-amber-500/10 text-amber-500 rounded-xl border border-amber-500/20">
               <FileSpreadsheet className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="font-black text-sm text-white uppercase tracking-wider">Perbarui / Sinkronisasi CSV</h3>
-              <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest mt-1">Impor Data Excel &amp; CSV Lokal</p>
+              <h3 className="font-black text-sm text-white uppercase tracking-wider">Perbarui / Sinkronisasi Excel</h3>
+              <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest mt-1">Impor Data Excel &amp; CSV Utama</p>
             </div>
           </div>
           <button 
             onClick={onClose}
+            type="button"
             className="text-stone-400 hover:text-white transition p-1 cursor-pointer"
           >
             <X className="h-5 w-5" />
@@ -143,18 +153,18 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
           
           {/* Instructions / Template Download button */}
           <div className="p-4 rounded-xl bg-[#241a16] border border-[#3e2e26]/40 flex items-start gap-3">
-            <Download className="h-4 w-4 text-[#f25c05] mt-0.5 flex-shrink-0" />
+            <Download className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
             <div className="space-y-2">
               <p className="text-[11px] font-bold text-stone-300 leading-snug">
-                Gunakan template standar agar kolom teridentifikasi secara otomatis oleh sistem, meskipun nama kolom ditulis kapital atau ada spasi/underscore.
+                Gunakan template standar agar kolom teridentifikasi secara otomatis oleh sistem (id, kecamatan, sekolah, nama, nip, nik, golongan, dll). Format Excel meminimalkan kegagalan pembacaan karakter khusus.
               </p>
               <button
                 type="button"
                 onClick={handleDownloadTemplate}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#f25c05] hover:bg-[#de5203] text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-[#141110] text-[10px] font-black uppercase tracking-widest rounded-lg transition cursor-pointer"
               >
                 <Download className="h-3.5 w-3.5" />
-                <span>Unduh Template CSV</span>
+                <span>Unduh Template Excel (.xlsx)</span>
               </button>
             </div>
           </div>
@@ -168,32 +178,32 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
             onClick={triggerFileInput}
             className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 ${
               dragActive 
-                ? "border-[#f25c05] bg-[#f25c05]/5" 
-                : csvFile 
+                ? "border-amber-500 bg-amber-500/5" 
+                : excelFile 
                 ? "border-emerald-500/50 bg-emerald-500/5" 
-                : "border-[#3d2f29] hover:border-[#f25c05]/50 hover:bg-[#251e1b]/30"
+                : "border-[#3d2f29] hover:border-amber-500/50 hover:bg-[#251e1b]/30"
             }`}
           >
             <input 
               ref={fileInputRef}
               type="file" 
-              accept=".csv" 
+              accept=".xlsx,.xls,.csv" 
               onChange={handleFileChange}
               className="hidden" 
             />
 
-            {csvFile ? (
+            {excelFile ? (
               <>
                 <FileSpreadsheet className="h-10 w-10 text-emerald-400" />
-                <p className="text-xs font-black text-white">{csvFile.name}</p>
-                <p className="text-[10px] text-stone-400 font-mono">Size: {(csvFile.size / 1024).toFixed(2)} KB</p>
+                <p className="text-xs font-black text-white">{excelFile.name}</p>
+                <p className="text-[10px] text-stone-400 font-mono font-bold">Ukuran: {(excelFile.size / 1024).toFixed(2)} KB</p>
                 <button 
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setCsvFile(null);
+                    setExcelFile(null);
                   }}
-                  className="mt-2 text-[10px] font-black uppercase text-red-400 border border-red-900/40 px-2.5 py-1 rounded bg-red-950/10 hover:bg-red-950/30"
+                  className="mt-2 text-[10px] font-black uppercase text-red-400 border border-red-900/40 px-2.5 py-1 rounded bg-red-950/10 hover:bg-red-950/30 cursor-pointer"
                 >
                   Ganti File
                 </button>
@@ -201,8 +211,8 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
             ) : (
               <>
                 <Upload className="h-10 w-10 text-stone-500 group-hover:text-amber-500" />
-                <p className="text-xs font-black text-stone-200">Seret &amp; letakkan file CSV Anda, atau klik untuk memilih</p>
-                <p className="text-[10px] text-stone-500 uppercase font-black tracking-wider">Hanya berkas berekstensi .csv</p>
+                <p className="text-xs font-black text-stone-200">Seret &amp; letakkan file Excel Anda di sini, atau klik untuk memilih</p>
+                <p className="text-[10px] text-stone-500 uppercase font-black tracking-wider">Mendukung format (.xlsx, .xls, .csv)</p>
               </>
             )}
           </div>
@@ -224,14 +234,14 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
                   className="mt-0.5 accent-[#f25c05]"
                 />
                 <div>
-                  <p className="text-xs font-black">Gabungkan &amp; Update (Disarankan)</p>
+                  <p className="text-xs font-black">Gabungkan &amp; Update</p>
                   <p className="text-[9px] text-stone-500 font-bold mt-0.5">Memutakhirkan baris lama dan menambahkan PTK baru tanpa menghapus data lain.</p>
                 </div>
               </label>
 
               <label className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition ${
                 uploadMode === "replace" 
-                  ? "bg-red-950/20 border-red-500/50 text-stone-100" 
+                  ? "bg-[#ef4444]/10 border-red-500/50 text-stone-100" 
                   : "bg-[#141110] border-[#2c221e] text-stone-400"
               }`}>
                 <input 
@@ -243,7 +253,7 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
                 />
                 <div>
                   <p className="text-xs font-black text-red-400">Ganti Seluruh Data</p>
-                  <p className="text-[9px] text-stone-500 font-bold mt-0.5">Menghapus total data PTK saat ini dan menyalin murni data dari CSV baru.</p>
+                  <p className="text-[9px] text-stone-500 font-bold mt-0.5">Menghapus total data PTK saat ini dan menyalin murni data dari Excel baru.</p>
                 </div>
               </label>
             </div>
@@ -254,7 +264,7 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
             <div className={`p-4 rounded-xl border flex items-start gap-3 animate-fade-in ${
               status.success 
                 ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-400" 
-                : "bg-red-500/5 border-red-500/20 text-red-450"
+                : "bg-red-500/5 border-red-500/20 text-red-400"
             }`}>
               {status.success ? (
                 <CheckCircle className="h-5 w-5 text-emerald-400 mt-0.5 shrink-0" />
@@ -276,8 +286,8 @@ export const ModalUploadCsv: React.FC<ModalUploadCsvProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading || !csvFile}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-[#f25c05] hover:bg-[#de5203] text-white text-xs font-black uppercase tracking-wider rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              disabled={loading || !excelFile}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-stone-900 text-xs font-black uppercase tracking-wider rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               {loading ? (
                 <>

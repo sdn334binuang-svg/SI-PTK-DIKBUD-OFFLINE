@@ -570,7 +570,7 @@ export default function App() {
                       </button>
                     )}
 
-                    {/* Sinkronisasi CSV trigger (Dinas Admin Only) */}
+                    {/* Sinkronisasi Excel trigger (Dinas Admin Only) */}
                     {session.role === "Admin Dinas" && (
                       <button
                         onClick={() => {
@@ -580,7 +580,7 @@ export default function App() {
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-medium text-amber-500 hover:text-white hover:bg-[#1c1715] transition cursor-pointer"
                       >
                         <FileSpreadsheet className="h-4 w-4 text-amber-500" />
-                        <span>Sinkronisasi CSV</span>
+                        <span>Sinkronisasi Excel</span>
                       </button>
                     )}
 
@@ -724,14 +724,14 @@ export default function App() {
                   </button>
                 )}
 
-                {/* Sinkronisasi CSV trigger (Dinas Only) */}
+                {/* Sinkronisasi Excel trigger (Dinas Only) */}
                 {session.role === "Admin Dinas" && (
                   <button
                     onClick={() => setOpenUploadCsvModal(true)}
                     className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold text-amber-500 hover:text-white hover:bg-[#1c1715] transition cursor-pointer"
                   >
                     <FileSpreadsheet className="h-4 w-4 text-amber-500" />
-                    <span>Sinkronisasi CSV</span>
+                    <span>Sinkronisasi Excel</span>
                   </button>
                 )}
 
