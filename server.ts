@@ -66,6 +66,21 @@ const defaultGtk = [
 // CSV PARSING & SERIALIZATION UTILITIES
 // ==========================================
 
+// Get a value from an object using a list of potential aliases, ignoring spaces, case, and underscores
+const getVal = (obj: any, aliases: string[]): string => {
+  if (!obj) return "";
+  for (const alias of aliases) {
+    const cleanedAlias = alias.toLowerCase().replace(/[\s_\-]/g, "");
+    for (const key of Object.keys(obj)) {
+      const cleanedKey = key.toLowerCase().replace(/[\s_\-]/g, "");
+      if (cleanedKey === cleanedAlias && obj[key] !== undefined && obj[key] !== null) {
+        return String(obj[key]).trim();
+      }
+    }
+  }
+  return "";
+};
+
 // Parse a complete CSV file safely
 const readCSV = (filePath: string, defaultData: any[]): any[] => {
   ensureDbDir();
@@ -75,8 +90,13 @@ const readCSV = (filePath: string, defaultData: any[]): any[] => {
   }
 
   try {
-    const content = fs.readFileSync(filePath, "utf8");
+    let content = fs.readFileSync(filePath, "utf8");
     if (!content || content.trim() === "") return [];
+
+    // Strip UTF-8 Byte Order Mark (BOM) if present
+    if (content.charCodeAt(0) === 0xFEFF) {
+      content = content.slice(1);
+    }
 
     const lines: string[] = [];
     let currentLine = "";
@@ -234,6 +254,194 @@ app.post("/api/change-password", async (req, res) => {
   return res.json({ success: false, message: "Password lama tidak sesuai!" });
 });
 
+// Admin Dinas: Download CSV Template for GTK/PTK
+app.get("/api/admin/download-template", (req, res) => {
+  const templateObjects = [
+    {
+      id: "ID178069900785899",
+      kecamatan: "KEC. BULUKUMPA",
+      sekolah: "SDN 58 TANETE",
+      nama: "IRA INDIRA, S.Pd., M.Pd",
+      nip: "197601152002122005",
+      status_pegawai: "PNS",
+      nik: "7302075501760004",
+      golongan: "IV/b",
+      tmt_golongan: "2023-04-01",
+      jabatan: "Guru Ahli Madya",
+      pendidikan: "S2",
+      beban_tugas: "Guru Kelas SD",
+      tmt_kepsek: "",
+      sertifikasi: "Ya",
+      mapel: "Guru Kelas SD",
+      no_hp: "6281342685961",
+      tmt_kgb_terakhir: "2022-12-01"
+    },
+    {
+      id: "ID178069900785800",
+      kecamatan: "KEC. BULUKUMPA",
+      sekolah: "SDN 58 TANETE",
+      nama: "BUDI SANTOSO, S.Pd",
+      nip: "198510102010011002",
+      status_pegawai: "PPPK",
+      nik: "7302071010850005",
+      golongan: "IX",
+      tmt_golongan: "2020-03-01",
+      jabatan: "Guru Pertama",
+      pendidikan: "S1",
+      beban_tugas: "Guru Mapel - PJOK",
+      tmt_kepsek: "",
+      sertifikasi: "Belum",
+      mapel: "PJOK",
+      no_hp: "6281234567890",
+      tmt_kgb_terakhir: "2022-03-01"
+    }
+  ];
+
+  const csvContent = "\ufeffsep=,\n" + stringifyToCSV(templateObjects);
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=template_ptk_dikbud.csv");
+  return res.send(csvContent);
+});
+
+// Admin Dinas: Upload and Sync CSV Database
+app.post("/api/admin/upload-database", async (req, res) => {
+  const { csvText, mode } = req.body;
+  if (!csvText) {
+    return res.status(400).json({ success: false, message: "Konten teks CSV kosong!" });
+  }
+
+  try {
+    let rawText = csvText;
+    // Strip BOM prefix if present
+    if (rawText.charCodeAt(0) === 0xFEFF) {
+      rawText = rawText.slice(1);
+    }
+
+    // Skip sep=, line if template identifier is present
+    if (rawText.trim().toLowerCase().startsWith("sep=")) {
+      const firstNewlineIdx = rawText.indexOf("\n");
+      if (firstNewlineIdx !== -1) {
+        rawText = rawText.slice(firstNewlineIdx + 1);
+      }
+    }
+
+    // Split text securely recognizing quotes
+    const lines: string[] = [];
+    let currentLine = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < rawText.length; i++) {
+      const char = rawText[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        currentLine += char;
+      } else if (char === '\n' && !inQuotes) {
+        lines.push(currentLine);
+        currentLine = "";
+      } else if (char === '\r' && !inQuotes) {
+        // ignore carriage return
+      } else {
+        currentLine += char;
+      }
+    }
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    if (lines.length < 2) {
+      return res.status(400).json({ success: false, message: "Berkas CSV tidak valid atau kosong!" });
+    }
+
+    const headers = parseCSVLine(lines[0]);
+    const parsedRows: any[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim() === "") continue;
+      const rowValues = parseCSVLine(lines[i]);
+      const rowObj: any = {};
+      headers.forEach((header, idx) => {
+        rowObj[header] = rowValues[idx] !== undefined ? rowValues[idx] : "";
+      });
+      parsedRows.push(rowObj);
+    }
+
+    // Map into normalized format
+    const cleanedRows = parsedRows.map((d: any) => {
+      const idVal = getVal(d, ["id"]) || ("ID" + Date.now() + Math.floor(Math.random() * 100000));
+      return {
+        id: idVal,
+        kecamatan: getVal(d, ["kecamatan", "kec"]).toUpperCase().trim(),
+        sekolah: getVal(d, ["sekolah", "nama_sekolah", "nama sekolah"]).toUpperCase().trim(),
+        nama: getVal(d, ["nama", "nama_lengkap", "nama lengkap"]),
+        nip: getVal(d, ["nip"]),
+        status_pegawai: getVal(d, ["status_pegawai", "status", "statuspegawai"]),
+        nik: getVal(d, ["nik"]),
+        golongan: getVal(d, ["golongan", "gol"]),
+        tmt_golongan: getVal(d, ["tmt_golongan", "tmtgolongan"]),
+        jabatan: getVal(d, ["jabatan"]),
+        pendidikan: getVal(d, ["pendidikan"]),
+        beban_tugas: getVal(d, ["beban_tugas", "beban_tugas_pokok"]),
+        tmt_kepsek: getVal(d, ["tmt_kepsek"]),
+        sertifikasi: getVal(d, ["sertifikasi"]) || "Belum",
+        mapel: getVal(d, ["mapel"]),
+        no_hp: getVal(d, ["no_hp", "nohp", "hp"]),
+        tmt_kgb_terakhir: getVal(d, ["tmt_kgb_terakhir", "tmt_kgb", "tmt_kgb_terakhir_formatted"]),
+        created_at: new Date().toISOString()
+      };
+    });
+
+    // Validations: require name, nik, sekolah, kecamatan as essentials
+    const validRows = cleanedRows.filter(r => r.nama && r.nik && r.sekolah && r.kecamatan);
+    if (validRows.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Tidak ditemukan baris data valid! Pastikan kolom Nama, NIK, Sekolah, dan Kecamatan terisi dengan benar." 
+      });
+    }
+
+    let finalRows: any[] = [];
+    if (mode === "merge") {
+      const existingRows = readCSV(GTK_CSV_PATH, defaultGtk);
+      const rowMap = new Map<string, any>();
+      
+      // Load current keys
+      existingRows.forEach((item: any) => {
+        const key = item.id || item.nik || "";
+        if (key) rowMap.set(key.toLowerCase().trim(), item);
+      });
+
+      // Overlay with uploaded rows matching either ID or NIK key
+      validRows.forEach((item: any) => {
+        // match on ID
+        if (item.id && rowMap.has(item.id.toLowerCase().trim())) {
+          rowMap.set(item.id.toLowerCase().trim(), item);
+        } else if (item.nik && rowMap.has(item.nik.toLowerCase().trim())) {
+          rowMap.set(item.nik.toLowerCase().trim(), item);
+        } else {
+          // New row to map
+          rowMap.set(item.id.toLowerCase().trim(), item);
+        }
+      });
+
+      finalRows = Array.from(rowMap.values());
+    } else {
+      // replace
+      finalRows = validRows;
+    }
+
+    writeCSV(GTK_CSV_PATH, finalRows);
+    return res.json({ 
+      success: true, 
+      message: `Database berhasil diperbarui! Berhasil memproses ${validRows.length} data guru/tenaga kependidikan.` 
+    });
+
+  } catch (err: any) {
+    console.error("Csv Import error:", err);
+    return res.status(500).json({ success: false, message: "Terjadi kesalahan: " + err.message });
+  }
+});
+
 // Load reference indices mapping school dropdowns
 app.get("/api/dropdown-data", async (req, res) => {
   const schools = readCSV(SEKOLAH_CSV_PATH, defaultSchools);
@@ -256,23 +464,23 @@ app.post("/api/gtk/list", async (req, res) => {
   const rawGtk = readCSV(GTK_CSV_PATH, defaultGtk);
 
   let filtered = rawGtk.map((d: any) => ({
-    ID: d.id,
-    Kecamatan: d.kecamatan,
-    Sekolah: d.sekolah,
-    Nama: d.nama,
-    NIP: d.nip || "",
-    Status_Pegawai: d.status_pegawai,
-    NIK: d.nik,
-    Golongan: d.golongan || "",
-    TMT_Golongan_Formatted: d.tmt_golongan || "",
-    TMT_KGB_Terakhir_Formatted: d.tmt_kgb_terakhir || "",
-    Jabatan: d.jabatan || "",
-    Pendidikan: d.pendidikan,
-    Beban_Tugas: d.beban_tugas,
-    TMT_Kepsek_Formatted: d.tmt_kepsek || "",
-    Sertifikasi: d.sertifikasi || "Belum",
-    Mapel: d.mapel || "",
-    No_HP: d.no_hp
+    ID: getVal(d, ["id"]),
+    Kecamatan: getVal(d, ["kecamatan", "kec"]),
+    Sekolah: getVal(d, ["sekolah", "nama_sekolah", "nama sekolah"]),
+    Nama: getVal(d, ["nama", "nama_lengkap", "nama lengkap"]),
+    NIP: getVal(d, ["nip"]) || "",
+    Status_Pegawai: getVal(d, ["status_pegawai", "status"]) as any,
+    NIK: getVal(d, ["nik"]),
+    Golongan: getVal(d, ["golongan", "gol"]),
+    TMT_Golongan_Formatted: getVal(d, ["tmt_golongan", "tmt_gol"]),
+    TMT_KGB_Terakhir_Formatted: getVal(d, ["tmt_kgb_terakhir", "tmt_kgb"]),
+    Jabatan: getVal(d, ["jabatan"]),
+    Pendidikan: getVal(d, ["pendidikan"]),
+    Beban_Tugas: getVal(d, ["beban_tugas", "beban_tugas_pokok"]),
+    TMT_Kepsek_Formatted: getVal(d, ["tmt_kepsek"]),
+    Sertifikasi: (getVal(d, ["sertifikasi"]) || "Belum") as any,
+    Mapel: getVal(d, ["mapel"]),
+    No_HP: getVal(d, ["no_hp", "nohp", "hp"])
   }));
 
   if (role === "Sekolah" && identifier) {

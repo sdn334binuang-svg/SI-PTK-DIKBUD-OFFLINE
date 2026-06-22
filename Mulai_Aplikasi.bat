@@ -1,4 +1,6 @@
 @echo off
+:: Berpindah ke direktori tempat berkas/file script ini berada
+cd /d "%~dp0"
 :: Mengaktifkan warna konsol jika didukung (Hijau Cerah)
 color 0a
 title SI-PTK DIKBUD BULUKUMBA (Local Distribution Mode)

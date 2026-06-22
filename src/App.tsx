@@ -10,6 +10,7 @@ import { ModalDataGanda } from "./components/ModalDataGanda";
 import { ModalChangePassword } from "./components/ModalChangePassword";
 import { ModalCetakOptions } from "./components/ModalCetakOptions";
 import { DashboardView } from "./components/DashboardView";
+import { ModalUploadCsv } from "./components/ModalUploadCsv";
 import { formatTanggalIndo, formatHpDisplay, getPangkatLengkap, printLaporan, exportExcelSekolah, exportExcelDinas } from "./utils";
 
 // Lucide icon imports
@@ -63,6 +64,7 @@ export default function App() {
   const [openDataGandaModal, setOpenDataGandaModal] = useState(false);
   const [openChangePasswordModal, setOpenChangePasswordModal] = useState(false);
   const [openCetakOptionsModal, setOpenCetakOptionsModal] = useState(false);
+  const [openUploadCsvModal, setOpenUploadCsvModal] = useState(false);
 
   // Selected item state for editing
   const [selectedGtkItem, setSelectedGtkItem] = useState<GtkItem | null>(null);
@@ -548,6 +550,20 @@ export default function App() {
                       </button>
                     )}
 
+                    {/* Sinkronisasi CSV trigger (Dinas Admin Only) */}
+                    {session.role === "Admin Dinas" && (
+                      <button
+                        onClick={() => {
+                          setOpenUploadCsvModal(true);
+                          setMobileSidebarOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-medium text-amber-500 hover:text-white hover:bg-[#1c1715] transition cursor-pointer"
+                      >
+                        <FileSpreadsheet className="h-4 w-4 text-amber-500" />
+                        <span>Sinkronisasi CSV</span>
+                      </button>
+                    )}
+
                     {/* Duplicate Scanning (Dinas Admin Only) */}
                     {session.role === "Admin Dinas" && (
                       <button
@@ -685,6 +701,17 @@ export default function App() {
                   >
                     <Settings className="h-4 w-4 text-stone-500" />
                     <span>Kelola Sekolah</span>
+                  </button>
+                )}
+
+                {/* Sinkronisasi CSV trigger (Dinas Only) */}
+                {session.role === "Admin Dinas" && (
+                  <button
+                    onClick={() => setOpenUploadCsvModal(true)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold text-amber-500 hover:text-white hover:bg-[#1c1715] transition cursor-pointer"
+                  >
+                    <FileSpreadsheet className="h-4 w-4 text-amber-500" />
+                    <span>Sinkronisasi CSV</span>
                   </button>
                 )}
 
@@ -1353,6 +1380,15 @@ export default function App() {
         isOpen={openCetakOptionsModal}
         onClose={() => setOpenCetakOptionsModal(false)}
         onSubmitCetak={handleCetakLaporanSubmit}
+      />
+
+      <ModalUploadCsv 
+        isOpen={openUploadCsvModal}
+        onClose={() => setOpenUploadCsvModal(false)}
+        onUploadSuccess={() => {
+          handleReloadGtkList();
+          fetchMetadata();
+        }}
       />
 
       {gtkToDelete && (
