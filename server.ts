@@ -807,24 +807,42 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`=======================================================`);
-    console.log(`  SISTEM INFORMASI PTK DIKBUD BULUKUMBA SIAP!`);
-    console.log(`  Server berjalan pada: http://localhost:${PORT}`);
-    console.log(`  Seluruh data disimpan di folder local: /database/`);
-    console.log(`=======================================================`);
+  const startListening = (port: number) => {
+    const server = app.listen(port, "0.0.0.0", () => {
+      console.log(`=======================================================`);
+      console.log(`  SISTEM INFORMASI PTK DIKBUD BULUKUMBA SIAP!`);
+      console.log(`  Server berjalan pada: http://localhost:${port}`);
+      console.log(`  Seluruh data disimpan di folder local: /database/`);
+      console.log(`=======================================================`);
 
-    // Auto-open browser on local machine setup (non-cloud environment check)
-    if (process.env.K_SERVICE === undefined) {
-      try {
-        const url = `http://localhost:${PORT}`;
-        const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-        exec(`${openCmd} ${url}`);
-      } catch (e) {
-        console.log("Could not auto-open browser, please open http://localhost:3000 manually:", e);
+      // Auto-open browser on local machine setup (non-cloud environment check)
+      if (process.env.K_SERVICE === undefined) {
+        try {
+          const url = `http://localhost:${port}`;
+          const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+          exec(`${openCmd} ${url}`);
+        } catch (e) {
+          console.log(`Could not auto-open browser, please open http://localhost:${port} manually:`, e);
+        }
       }
-    }
-  });
+    });
+
+    server.on("error", (err: any) => {
+      if (err.code === "EADDRINUSE") {
+        if (process.env.K_SERVICE !== undefined) {
+          console.error(`[CRITICAL] Port ${port} is already in use inside Cloud Run. Dynamic fallback is disabled in cloud.`);
+          process.exit(1);
+        } else {
+          console.warn(`[PORT CONFLICT] Port ${port} is already in use. Trying available port: ${port + 1}...`);
+          startListening(port + 1);
+        }
+      } else {
+        console.error("[SERVER ERROR]", err);
+      }
+    });
+  };
+
+  startListening(PORT);
 }
 
 startServer();

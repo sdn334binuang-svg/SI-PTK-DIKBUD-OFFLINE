@@ -118,6 +118,18 @@ export default function App() {
     if (session) {
       handleReloadGtkList();
     }
+
+    const handleFocus = () => {
+      fetchMetadata();
+      if (session) {
+        handleReloadGtkList();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [session]);
 
   const handleLogout = () => {
@@ -436,7 +448,15 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-[#13100e] text-[#d4cdcb] antialiased font-sans selection:bg-[#f25c05]/30 selection:text-white">
       
       {/* 1. Database Connection Alert Bar */}
-      {/* <DbAlert status={dbStatus} onRefresh={fetchMetadata} /> */}
+      <DbAlert 
+        status={dbStatus} 
+        onRefresh={async () => {
+          await fetchMetadata();
+          if (session) {
+            await handleReloadGtkList();
+          }
+        }} 
+      />
 
       {!session ? (
         // 2. Authentication Screen
